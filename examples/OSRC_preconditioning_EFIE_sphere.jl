@@ -5,11 +5,9 @@
 
 using CompScienceMeshes, BEAST
 using Makeitso
-using PlotlyJS
 using LinearAlgebra
 
-
-include(joinpath("src", "OSRC.jl"))       # TODO: properly export
+include(joinpath(@__DIR__, "..","src", "operators", "OSRC.jl"))       # TODO: properly export
 
 @target geo (;h) -> begin
       (; Γ = CompScienceMeshes.meshsphere(radius=1.0, h=h))       # unit sphere
@@ -92,6 +90,6 @@ end
 h_values = [0.5, 0.3, 0.15]
 low_frequency_κ = pi/10
 high_frequency_κ = pi*1.0
-
+# TODO: probably just one discretization (0.15 too slow now)
 sol_low_freq_1e6_Np6 = make(OSRC_sweep_discretizations; h=h_values, κ=[low_frequency_κ], residual=[1e-6], Np=6)
 sol_high_freq_1e6_Np6 = make(OSRC_sweep_discretizations; h=h_values, κ=[high_frequency_κ], residual=[1e-6], Np=6)

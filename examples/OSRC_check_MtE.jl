@@ -8,11 +8,10 @@
 using BEAST
 using CompScienceMeshes
 using Makeitso
-using PlotlyJS
 using LinearAlgebra
 
 
-include(joinpath("src", "OSRC.jl"))       # TODO: properly export
+include(joinpath(@__DIR__, "..","src", "operators", "OSRC.jl"))       # TODO: properly export
 
 @target geo (;h) -> begin
       (; Γ = CompScienceMeshes.meshsphere(radius=1.0, h=h))       # unit sphere
@@ -58,5 +57,5 @@ h_values = [0.5, 0.3, 0.2]
 h_conv_high = make(sweep_MtE_map; h=h_values, κ=[pi*1.0], Np=[2])
 h_conv_low = make(sweep_MtE_map; h=h_values, κ=[pi/10], Np=[2])
 
-Np_conv_high = make(sweep_MtE_map; h=0.2, κ=[pi*1.0], Np=Np_values)
-Np_conv_low = make(sweep_MtE_map; h=0.2, κ=[pi/10], Np=Np_values)
+Np_conv_high = make(sweep_MtE_map; h=0.3, κ=[pi*1.0], Np=Np_values)
+Np_conv_low = make(sweep_MtE_map; h=0.3, κ=[pi/10], Np=Np_values)

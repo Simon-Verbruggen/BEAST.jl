@@ -7,14 +7,12 @@ using CompScienceMeshes, BEAST
 using Makeitso
 using LinearAlgebra
 
-include(joinpath(@__DIR__, "..","src", "operators", "OSRC.jl"))       # TODO: properly export
-
 @target geo (;h) -> begin
       (; Γ = CompScienceMeshes.meshsphere(radius=1.0, h=h))       # unit sphere
 end
 
-@target OSRC_preconditioner (geo,;κ, Np) -> begin
-      MtE_map = MtE_operator(geo.Γ, κ, Np, pi/2)
+@target OSRC_preconditioner (geo,;κ, Np, curvature) -> begin
+      MtE_map = BEAST.MtE_operator(geo.Γ, κ, Np, pi/2, curvature=curvature)
       return (;MtE=MtE_map)
 end
 
@@ -85,11 +83,11 @@ end
       return (solution_EFIE.iters, solution_OSRC_precond_EFIE.iters,  solution_calderon_precond_EFIE.iters)
 end
 
-@sweep OSRC_sweep_discretizations (!solution_comparison,; h=[], κ=[], residual=[], Np=[]) -> (;sol=solution_comparison,)
+@sweep OSRC_sweep_discretizations (!solution_comparison,; h=[], κ=[], residual=[], Np=[], curvature=[]) -> (;sol=solution_comparison,)
 
-h_values = [0.5, 0.3, 0.15]
+h_values = [0.5, 0.3]
 low_frequency_κ = pi/10
 high_frequency_κ = pi*1.0
-# TODO: probably just one discretization (0.15 too slow now)
-sol_low_freq_1e6_Np6 = make(OSRC_sweep_discretizations; h=h_values, κ=[low_frequency_κ], residual=[1e-6], Np=6)
-sol_high_freq_1e6_Np6 = make(OSRC_sweep_discretizations; h=h_values, κ=[high_frequency_κ], residual=[1e-6], Np=6)
+
+sol_low_freq_1e6_Np6 = make(OSRC_sweep_discretizations; h=h_values, κ=[low_frequency_κ], residual=[1e-6], Np=6, curvature=[1.0], )
+sol_high_freq_1e6_Np6 = make(OSRC_sweep_discretizations; h=h_values, κ=[high_frequency_κ], residual=[1e-6], Np=6, curvature=[1.0], )

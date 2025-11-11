@@ -64,15 +64,12 @@ end
 
 # Next, the MtE operator is assembled as a linear map. This is implemented according to the discretization in the paper <a href="https://arxiv.org/abs/2111.10761" target='new'> An OSRC Preconditioner for the EFIE (Betcke et al. (2021))</a>.
 
-function MtE_operator(Γ, κ, Np::Int, theta_p::Float64)
+function MtE_operator(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
     pade_struct = Pade_approx(Np, theta_p);     # load in pade struct for pade coefficients and constants
     R_0 = get_R0(pade_struct)
 
-    ϵ = MtE_damping(wavenumber=κ, curvature=1/1.0)
+    ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
     κ_ϵ = κ + im*ϵ
-    
-    @hilbertspace ϕ ρ       # trial functions
-    @hilbertspace w z       # testing functions
 
     # Define the relevant function spaces
     Nd = BEAST.nedelec(Γ);
@@ -102,4 +99,77 @@ function MtE_operator(Γ, κ, Np::Int, theta_p::Float64)
     G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
     MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
     return MtE_map
+end
+
+
+function MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, solver=BEAST.lu, kwargs...)
+      pade_struct = Pade_approx(Np, theta_p);     # load in pade struct for pade coefficients and constants
+      R_0 = get_R0(pade_struct)
+
+      ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
+      κ_ϵ = κ #+ im*ϵ
+
+      # Define the relevant function spaces
+      Nd = BEAST.nedelec(Γ);
+      L0_int = BEAST.lagrangec0d1(Γ);
+      grad_L0_int = BEAST.gradient(L0_int)
+      curl_Nd = BEAST.curl(Nd)
+
+      N_L0 = numfunctions(L0_int)
+      N_Nd = numfunctions(Nd)
+
+      # Assemble the submatrices of the blockmatrix of the system
+      Id = BEAST.Identity();
+      G = assemble(Id, Nd, Nd)
+      N_ϵ = (1/κ_ϵ)^2 * assemble(Id, curl_Nd, curl_Nd)
+      K_ϵ = κ_ϵ^2 * assemble(Id, L0_int, L0_int)
+      L = assemble(Id, Nd, grad_L0_int)
+      L_transpose = assemble(Id, grad_L0_int, Nd)
+
+      # construct the sparse system matrix and invert
+      function create_j_phi_matrix17(j)
+            B_j = get_B_j(pade_struct, j)
+            # blockmatrix of sparse matrices
+            AXY = [G-B_j*N_ϵ       B_j*L
+                  L_transpose     K_ϵ]
+            SXY = solver(AXY; kwargs...)                    # solve the matrix with the solver argument
+            Sliced_SXY = SlicedLinearMap(SXY, 1:N_Nd, 1:N_Nd)
+            P = Sliced_SXY.P
+            Q = Sliced_SXY.Q
+            SXY_sliced = P*SXY*Q
+            return SXY_sliced
+      end
+
+      sum_Π_inv_matrix = sum(get_A_j(pade_struct, j)/get_B_j(pade_struct, j) * create_j_phi_matrix17(j) for j in 1:Np)
+      G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
+
+      MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
+      return MtE_map
+end
+
+function MtE_operator_lu(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
+      MtE_map = MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, solver=BEAST.lu)
+      return MtE_map
+end
+
+function MtE_operator_GMRES(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
+      MtE_map = MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, solver=BEAST.GMRES, verbose=0)
+      return MtE_map
+end
+
+
+
+function Cheap_OSRC_preconditioner(Γ, κ; curvature = 1)
+    ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
+    κ_ϵ = κ + im*ϵ
+
+    Nd = BEAST.nedelec(Γ);
+    curl_Nd = BEAST.curl(Nd)
+
+    # Assemble the submatrices of the blockmatrix of the system
+    Id = BEAST.Identity();
+    G = assemble(Id, Nd, Nd)
+    N_ϵ = sparse(assemble((1/κ_ϵ)^2 * Id, curl_Nd, curl_Nd))
+    G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
+    return G_N_ϵ_inv
 end

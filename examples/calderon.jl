@@ -15,6 +15,7 @@ e = (n × E) × n
 bx = assemble(e, X)
 
 A = assemble(T,X,X); println("primal discretisation assembled.")
+Txx = A
 
 Tyy = assemble(T,Y,Y); println("dual discretisation assembled.")
 Nxy = Matrix(assemble(N,X,Y)); println("duality form assembled.")

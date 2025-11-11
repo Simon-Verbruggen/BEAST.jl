@@ -5,13 +5,9 @@
 #
 # We will begin by constructing a MtE map and inverting it to obtain the EtM map. Then the convergence of the norm of ``MtE * J`` is checked, which should approach ``\mathbf{M}=0``.
 # Note: with this current check the MtE map can still be implemented wrong, up to a prefactor. (But for preconditioning purposes, this prefactor is not of importance)
-using BEAST
-using CompScienceMeshes
+using CompScienceMeshes, BEAST
 using Makeitso
 using LinearAlgebra
-
-
-include(joinpath(@__DIR__, "..","src", "operators", "OSRC.jl"))       # TODO: properly export
 
 @target geo (;h) -> begin
       (; Γ = CompScienceMeshes.meshsphere(radius=1.0, h=h))       # unit sphere
@@ -34,8 +30,8 @@ end
     return (;current=u)
 end
 
-@target OSRC_preconditioner (geo,;κ, Np) -> begin
-      MtE_map = MtE_operator(geo.Γ, κ, Np, pi/2)
+@target OSRC_preconditioner (geo,;κ, Np, curvature) -> begin
+      MtE_map = BEAST.MtE_operator(geo.Γ, κ, Np, pi/2, curvature=curvature)
       return (;MtE=MtE_map)
 end
 
@@ -50,12 +46,12 @@ end
 end
 
 # convergence in function of h and Np (for high and low frequencies)
-@sweep sweep_MtE_map (!check_MtE_map,; h=[], κ=[], Np=[]) -> (;sol=check_MtE_map,)
+@sweep sweep_MtE_map (!check_MtE_map,; h=[], κ=[], Np=[], curvature=[]) -> (;sol=check_MtE_map,)
 Np_values = [2, 3, 4, 6]
 h_values = [0.5, 0.3, 0.2]
 
-h_conv_high = make(sweep_MtE_map; h=h_values, κ=[pi*1.0], Np=[2])
-h_conv_low = make(sweep_MtE_map; h=h_values, κ=[pi/10], Np=[2])
+h_conv_high = make(sweep_MtE_map; h=h_values, κ=[pi*1.0], Np=[2], curvature=[1.0])
+h_conv_low = make(sweep_MtE_map; h=h_values, κ=[pi/10], Np=[2], curvature=[1.0])
 
-Np_conv_high = make(sweep_MtE_map; h=0.3, κ=[pi*1.0], Np=Np_values)
-Np_conv_low = make(sweep_MtE_map; h=0.3, κ=[pi/10], Np=Np_values)
+Np_conv_high = make(sweep_MtE_map; h=0.3, κ=[pi*1.0], Np=Np_values, curvature=[1.0])
+Np_conv_low = make(sweep_MtE_map; h=0.3, κ=[pi/10], Np=Np_values, curvature=[1.0])

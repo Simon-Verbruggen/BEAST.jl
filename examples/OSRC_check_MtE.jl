@@ -9,6 +9,8 @@ using CompScienceMeshes, BEAST
 using Makeitso
 using LinearAlgebra
 
+BLAS.set_num_threads(1)
+
 @target geo (;h) -> begin
       (; Γ = CompScienceMeshes.meshsphere(radius=1.0, h=h))       # unit sphere
 end
@@ -30,13 +32,16 @@ end
     return (;current=u)
 end
 
-@target OSRC_preconditioner (geo,;κ, Np, curvature) -> begin
-      MtE_map = BEAST.MtE_operator(geo.Γ, κ, Np, pi/2, curvature=curvature)
-      return (;MtE=MtE_map)
+@target OSRC_MtE_operator (geo,;κ, Np, curvature) -> begin
+    OSRC_operator = BEAST.OSRC_op(κ, Np, pi/2, curvature)
+    Nd = BEAST.nedelec(geo.Γ)
+    L0_int = BEAST.lagrangec0d1(geo.Γ);
+    MtE_map = assemble(OSRC_operator, Nd, Nd, L0_int)
+    return (;MtE=MtE_map)
 end
 
-@target check_MtE_map (solution_EFIE, OSRC_preconditioner;) -> begin
-    MtE_map = OSRC_preconditioner.MtE
+@target check_MtE_map (solution_EFIE, OSRC_MtE_operator;) -> begin
+    MtE_map = OSRC_MtE_operator.MtE
     u = solution_EFIE.current
 
     EtM_matrix = inv(Matrix(MtE_map))           # invert the map to EtM operator

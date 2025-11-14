@@ -22,17 +22,22 @@
 using SparseArrays
 using BEAST
 
-struct OSRC_op
+struct OSRC_op <: Operator
     wavenumber::Float64
     Np::Int
     θ_p::Float64
     curvature::Float64
 end
 
-# TODO: deprecated -> remove
-struct pade_struct
-    Np::Int
-    θ_p::Float64
+# TODO: maybe better implementation type
+function scalartype(op::OSRC_op)
+    T = scalartype(op.wavenumber)
+    CT = Complex{T}
+    if op.curvature == 0.0
+        return T
+    else
+        return CT
+    end
 end
 
 function get_a_j(OSRC, j::Int)
@@ -102,6 +107,16 @@ end
 # The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
 function MtE_damping(op::OSRC_op)
     return 0.39*op.wavenumber^(1/3)*op.curvature^(2/3)
+end
+
+# TODO: deprecated -> remove
+struct Pade_approx
+    Np::Int
+    θ_p::Float64
+end
+
+function MtE_damping(;wavenumber=nothing, curvature=nothing)
+    return 0.39*wavenumber^(1/3)*curvature^(2/3)
 end
 
 # Next, the MtE operator is assembled as a linear map. This is implemented according to the discretization in the paper <a href="https://arxiv.org/abs/2111.10761" target='new'> An OSRC Preconditioner for the EFIE (Betcke et al. (2021))</a>.
@@ -199,18 +214,19 @@ function MtE_operator_GMRES(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
       return MtE_map
 end
 
-function assemble(op::OSRC_op,X,Y,L0_int;)
+function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
     R_0 = get_R0(op)
 
     ϵ = MtE_damping(op)
     κ = op.wavenumber
     κ_ϵ = κ + im*ϵ
 
+    #create auxilary basis functions
+    L0_int = BEAST.lagrangec0d1(X.geo)
+    grad_L0_int = BEAST.gradient(L0_int)
     # Define the relevant function spaces
     curl_X = BEAST.curl(X)
     curl_Y = BEAST.curl(Y)
-    grad_L0_int = BEAST.gradient(L0_int)
-    
 
     N_L0 = numfunctions(L0_int)
     N_X = numfunctions(X)

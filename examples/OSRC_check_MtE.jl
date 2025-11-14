@@ -35,8 +35,7 @@ end
 @target OSRC_MtE_operator (geo,;κ, Np, curvature) -> begin
     OSRC_operator = BEAST.OSRC_op(κ, Np, pi/2, curvature)
     Nd = BEAST.nedelec(geo.Γ)
-    L0_int = BEAST.lagrangec0d1(geo.Γ);
-    MtE_map = assemble(OSRC_operator, Nd, Nd, L0_int)
+    MtE_map = assemble(OSRC_operator, Nd, Nd)
     return (;MtE=MtE_map)
 end
 

@@ -2,7 +2,7 @@ using CompScienceMeshes, BEAST
 using LinearAlgebra
 
 # values
-h = 0.1
+h = 0.05
 κ = pi*1.0
 residual = 1e-6
 Np = 4
@@ -52,8 +52,8 @@ iT = BEAST.GMRESSolver(A; restart=1_500, abstol=residual, reltol=residual, maxit
 _, solving_time, bytes, alloc, gctime = @timed u, ch = BEAST.solve(iT, bx)
 solution_OSRC_lu_precond_EFIE = (;iters=ch.iters, assembly_time=OSRC_lu_preconditioner.assembly_time + assembly_time_EFIE, solving_time=solving_time)
 
-time_per_iter_OSRC = solution_OSRC_lu_precond_EFIE.solving_time/ch.iters
-time_per_iter_EFIE = solution_EFIE.solving_time/ch.iters
+time_per_iter_OSRC = solution_OSRC_lu_precond_EFIE.solving_time/solution_OSRC_lu_precond_EFIE.iters
+time_per_iter_EFIE = solution_EFIE.solving_time/solution_EFIE.iters
 
 ##### iter time, strict ####
 

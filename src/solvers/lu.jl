@@ -41,6 +41,7 @@ end
 function LinearAlgebra.mul!(y::AbstractVector, L::LUFactorization, b::AbstractVector)
     fill!(y,false)
     if L.factorized == false
+        println("Factorize LU")
         L.F = LinearAlgebra.lu!(L.A)
         L.factorized = true
     end

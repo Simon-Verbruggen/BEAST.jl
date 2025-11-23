@@ -52,10 +52,16 @@ iT = BEAST.GMRESSolver(A; restart=1_500, abstol=residual, reltol=residual, maxit
 _, solving_time, bytes, alloc, gctime = @timed u, ch = BEAST.solve(iT, bx)
 solution_OSRC_lu_precond_EFIE = (;iters=ch.iters, assembly_time=OSRC_lu_preconditioner.assembly_time + assembly_time_EFIE, solving_time=solving_time)
 
-time_per_iter_OSRC = solution_OSRC_lu_precond_EFIE.solving_time/ch.iters
-time_per_iter_EFIE = solution_EFIE.solving_time/ch.iters
+time_per_iter_OSRC = solution_OSRC_lu_precond_EFIE.solving_time/solution_OSRC_lu_precond_EFIE.iters
+time_per_iter_EFIE = solution_EFIE.solving_time/solution_EFIE.iters
 
 ##### iter time, strict ####
 
 println(time_per_iter_OSRC)
 println(time_per_iter_EFIE)
+
+num_iters = 100
+_, iters_time_OSRC, bytes, alloc, gctime = @timed begin
+    P_OSRC*bx
+end
+timer_per_iter_OSRC_mult = iters_time_OSRC/num_iters

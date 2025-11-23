@@ -21,6 +21,37 @@
 # First we implement a rotating branch-cut rational Padé approximation of the square root function ``\sqrt{1+z^2}``.
 using SparseArrays
 using BEAST
+using LinearMaps
+
+struct SlicedLinearMap
+    A::LinearMap
+    P::LinearMap
+    Q::LinearMap
+    rows::UnitRange{Int}
+    cols::UnitRange{Int}
+end
+
+function SlicedLinearMap(A::LinearMap, rows::UnitRange{Int}, cols::UnitRange{Int})
+    # selected rows and columns inside the matrix
+    n_rows = length(rows)
+    n_cols = length(cols)
+    n, m = size(A)
+
+    # functions used for the construction of the matrices
+    function slice_row(vector::AbstractVector)
+        return vector[rows]
+    end
+
+    function slice_column(vector::AbstractVector)
+        y = zeros(ComplexF64, n)
+        y[cols] = vector
+        return y
+    end
+
+    P = LinearMap(slice_row, n_rows, n; ismutating=false)
+    Q =  LinearMap(slice_column, n, n_cols; ismutating=false)
+    return SlicedLinearMap(A, P, Q, rows, cols)
+end
 
 struct Pade_approx
     Np::Int

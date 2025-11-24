@@ -59,3 +59,10 @@ time_per_iter_EFIE = solution_EFIE.solving_time/solution_EFIE.iters
 
 println(time_per_iter_OSRC)
 println(time_per_iter_EFIE)
+
+num_iters = 100
+_, iters_time_OSRC, bytes, alloc, gctime = @timed begin
+    P_OSRC*bx
+end
+timer_per_iter_OSRC_mult = iters_time_OSRC/num_iters
+println(timer_per_iter_OSRC_mult)

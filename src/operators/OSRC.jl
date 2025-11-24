@@ -21,7 +21,58 @@
 # First we implement a rotating branch-cut rational Padé approximation of the square root function ``\sqrt{1+z^2}``.
 using SparseArrays
 using BEAST
-using LinearMaps
+
+struct OSRC_op <: Operator
+    wavenumber::Float64
+    Np::Int
+    θ_p::Float64
+    curvature::Float64
+end
+
+# TODO: maybe better implementation type
+function scalartype(op::OSRC_op)
+    T = scalartype(op.wavenumber)
+    CT = Complex{T}
+    if op.curvature == 0.0
+        return T
+    else
+        return CT
+    end
+end
+
+function get_a_j(OSRC, j::Int)
+    return 2/(2*OSRC.Np+1)*(sin(j*pi/(2*OSRC.Np+1)))^2
+end
+
+function get_b_j(OSRC, j::Int)
+    return (cos(j*pi/(2*OSRC.Np+1)))^2
+end
+
+function get_A_j(OSRC, j::Int)
+    return exp(-im*OSRC.θ_p/2) * get_a_j(OSRC,j) / (1 + get_b_j(OSRC,j)*(exp(-im * OSRC.θ_p) - 1))^2
+end
+function get_B_j(OSRC, j::Int)
+    return exp(-im*OSRC.θ_p) * get_b_j(OSRC,j) / (1 + get_b_j(OSRC,j)*(exp(-im * OSRC.θ_p) - 1))
+end
+
+function get_RNp(z, OSRC)
+    R_Np = 1 + sum(get_a_j(OSRC,j)*z/(1+get_b_j(OSRC,j)*z) for j in 1:OSRC.Np)
+    return R_Np
+end
+
+function get_R0(OSRC)
+    C0 = exp(im*OSRC.θ_p/2) * get_RNp((exp(-im*OSRC.θ_p)-1), OSRC)
+    R0 = C0 + sum(get_A_j(OSRC,j)/get_B_j(OSRC,j) for j in 1:OSRC.Np)
+    return R0
+end
+
+function rotated_pade(z, OSRC)
+    return get_R0(OSRC) - sum(get_A_j(OSRC, j)/(get_B_j(OSRC, j)*(1 + get_B_j(OSRC, j)*z)) for j in 1:OSRC.Np)
+end
+
+# # Projection and embedding of LinearMaps
+# Construct LinearMaps which slice out a relevant submatrix of a LinearMap (without constructing the actual LinearMap).
+# This is done very efficiently (see Benchmark)
 
 struct SlicedLinearMap
     A::LinearMap
@@ -53,42 +104,17 @@ function SlicedLinearMap(A::LinearMap, rows::UnitRange{Int}, cols::UnitRange{Int
     return SlicedLinearMap(A, P, Q, rows, cols)
 end
 
+# The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
+function MtE_damping(op::OSRC_op)
+    return 0.39*op.wavenumber^(1/3)*op.curvature^(2/3)
+end
+
+# TODO: deprecated -> remove
 struct Pade_approx
     Np::Int
     θ_p::Float64
 end
 
-function get_a_j(p::Pade_approx, j::Int)
-    return 2/(2*p.Np+1)*(sin(j*pi/(2*p.Np+1)))^2
-end
-
-function get_b_j(p::Pade_approx, j::Int)
-    return (cos(j*pi/(2*p.Np+1)))^2
-end
-
-function get_A_j(p::Pade_approx, j::Int)
-    return exp(-im*p.θ_p/2) * get_a_j(p,j) / (1 + get_b_j(p,j)*(exp(-im * p.θ_p) - 1))^2
-end
-function get_B_j(p::Pade_approx, j::Int)
-    return exp(-im*p.θ_p) * get_b_j(p,j) / (1 + get_b_j(p,j)*(exp(-im * p.θ_p) - 1))
-end
-
-function get_RNp(z, p::Pade_approx)
-    R_Np = 1 + sum(get_a_j(p,j)*z/(1+get_b_j(p,j)*z) for j in 1:p.Np)
-    return R_Np
-end
-
-function get_R0(p::Pade_approx)
-    C0 = exp(im*p.θ_p/2) * get_RNp((exp(-im*p.θ_p)-1), p)
-    R0 = C0 + sum(get_A_j(p,j)/get_B_j(p,j) for j in 1:p.Np)
-    return R0
-end
-
-function rotated_pade(z, p::Pade_approx)
-    return get_R0(p) - sum(get_A_j(p, j)/(get_B_j(p, j)*(1 + get_B_j(p, j)*z)) for j in 1:p.Np)
-end
-
-# The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
 function MtE_damping(;wavenumber=nothing, curvature=nothing)
     return 0.39*wavenumber^(1/3)*curvature^(2/3)
 end
@@ -138,7 +164,7 @@ function MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, s
       R_0 = get_R0(pade_struct)
 
       ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
-      κ_ϵ = κ #+ im*ϵ
+      κ_ϵ = κ + im*ϵ
 
       # Define the relevant function spaces
       Nd = BEAST.nedelec(Γ);
@@ -186,6 +212,53 @@ end
 function MtE_operator_GMRES(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
       MtE_map = MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, solver=BEAST.GMRES, verbose=0)
       return MtE_map
+end
+
+function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
+    R_0 = get_R0(op)
+
+    ϵ = MtE_damping(op)
+    κ = op.wavenumber
+    κ_ϵ = κ + im*ϵ
+
+    #create auxilary basis functions
+    L0_int = BEAST.lagrangec0d1(X.geo)
+    grad_L0_int = BEAST.gradient(L0_int)
+    # Define the relevant function spaces
+    curl_X = BEAST.curl(X)
+    curl_Y = BEAST.curl(Y)
+
+    N_L0 = numfunctions(L0_int)
+    N_X = numfunctions(X)
+    N_Y = numfunctions(Y)
+
+    # Assemble the submatrices of the blockmatrix of the system
+    Id = BEAST.Identity();
+    G = assemble(Id, X, Y)
+    N_ϵ = (1/κ_ϵ)^2 * assemble(Id, curl_X, curl_Y)
+    K_ϵ = κ_ϵ^2 * assemble(Id, L0_int, L0_int)
+    L = assemble(Id, X, grad_L0_int)
+    L_transpose = assemble(Id, grad_L0_int, Y)
+
+    # construct the sparse system matrix and invert
+    function create_j_phi_matrix17(j)
+        B_j = get_B_j(op, j)
+        # blockmatrix of sparse matrices
+        AXY = [G-B_j*N_ϵ       B_j*L
+                L_transpose     K_ϵ]
+        SXY = BEAST.lu(AXY)
+        Sliced_SXY = SlicedLinearMap(SXY, 1:N_X, 1:N_Y)
+        P = Sliced_SXY.P
+        Q = Sliced_SXY.Q
+        SXY_sliced = P*SXY*Q
+        return SXY_sliced
+    end
+
+    sum_Π_inv_matrix = sum(get_A_j(op, j)/get_B_j(op, j) * create_j_phi_matrix17(j) for j in 1:op.Np)
+    G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
+
+    MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
+    return MtE_map
 end
 
 

@@ -1,6 +1,8 @@
 using CompScienceMeshes, BEAST
 using LinearAlgebra
 
+BLAS.set_num_threads(32)
+
 # values
 h = 0.05
 κ = pi*1.0
@@ -57,11 +59,13 @@ time_per_iter_EFIE = solution_EFIE.solving_time/solution_EFIE.iters
 
 ##### iter time, strict ####
 
-println(time_per_iter_OSRC)
-println(time_per_iter_EFIE)
 
 num_iters = 100
 _, iters_time_OSRC, bytes, alloc, gctime = @timed begin
     P_OSRC*bx
 end
 timer_per_iter_OSRC_mult = iters_time_OSRC/num_iters
+
+println(time_per_iter_OSRC)
+println(timer_per_iter_OSRC_mult)
+println(time_per_iter_EFIE)

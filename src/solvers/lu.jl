@@ -1,4 +1,4 @@
-mutable struct LUFactorization{T,M<:Matrix{T},X} <: LinearMap{T}
+mutable struct LUFactorization{T,M<:AbstractMatrix{T},X} <: LinearMap{T}
     A::M
     F::Any
     factorized::Bool
@@ -10,8 +10,7 @@ function LUFactorization(A)
     T = eltype(A)
     axs = reverse(axes(A))
     X = typeof(axs)
-    B = Matrix(A)
-    LUFactorization{T,Matrix{T},X}(B, nothing, false, axs)
+    LUFactorization{T,M,X}(A, nothing, false, axs)
 end
 
 # function LUFactorization(A::SparseMatrixCSC) 
@@ -41,8 +40,7 @@ end
 function LinearAlgebra.mul!(y::AbstractVector, L::LUFactorization, b::AbstractVector)
     fill!(y,false)
     if L.factorized == false
-        println("Factorize LU")
-        L.F = LinearAlgebra.lu!(L.A)
+        L.F = LinearAlgebra.lu(L.A)
         L.factorized = true
     end
     y[:] = L.F \ Vector(b)

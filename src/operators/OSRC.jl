@@ -222,7 +222,7 @@ function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
     κ_ϵ = κ + im*ϵ
 
     #create auxilary basis functions
-    L0_int = BEAST.lagrangec0d1(X.geo)
+    L0_int = BEAST.lagrangec0d1(X.geo; dirichlet = false)
     grad_L0_int = BEAST.gradient(L0_int)
     # Define the relevant function spaces
     curl_X = BEAST.curl(X)

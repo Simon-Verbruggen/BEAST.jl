@@ -60,14 +60,23 @@ function get_RNp(z, OSRC)
     return R_Np
 end
 
-function get_R0(OSRC)
+function get_C0(OSRC)
     C0 = exp(im*OSRC.θ_p/2) * get_RNp((exp(-im*OSRC.θ_p)-1), OSRC)
+    return C0
+end
+
+function get_R0(OSRC)
+    C0 = get_C0(OSRC)
     R0 = C0 + sum(get_A_j(OSRC,j)/get_B_j(OSRC,j) for j in 1:OSRC.Np)
     return R0
 end
 
 function rotated_pade(z, OSRC)
-    return get_R0(OSRC) - sum(get_A_j(OSRC, j)/(get_B_j(OSRC, j)*(1 + get_B_j(OSRC, j)*z)) for j in 1:OSRC.Np)
+    return get_R0(OSRC)*I - sum(get_A_j(OSRC, j)*I/(get_B_j(OSRC, j)*(I + get_B_j(OSRC, j)*z)) for j in 1:OSRC.Np)
+end
+
+function rotated_implicit_pade(get_Π, OSRC)
+    return get_R0(OSRC)*I - sum(get_A_j(OSRC, j)*I/(get_B_j(OSRC, j)*(get_Π(j, OSRC))) for j in 1:OSRC.Np)
 end
 
 # # Projection and embedding of LinearMaps

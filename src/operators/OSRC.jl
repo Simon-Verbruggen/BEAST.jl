@@ -27,6 +27,30 @@ struct OSRC_op <: Operator
     Np::Int
     θ_p::Float64
     curvature::Float64
+    aj::Vector{ComplexF64}
+    bj::Vector{ComplexF64}
+    Aj::Vector{ComplexF64}
+    Bj::Vector{ComplexF64}
+end
+
+function OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
+    # get the real and rotated pade coefficients
+    aj = ComplexF64[]
+    bj = ComplexF64[]
+    Aj = ComplexF64[]
+    Bj = ComplexF64[]
+    for j in 1:Np
+        a =  2/(2*Np+1)*(sin(j*pi/(2*Np+1)))^2
+        b = (cos(j*pi/(2*Np+1)))^2
+        A = exp(-im*θ_p/2) * a / (1 + b*(exp(-im * θ_p) - 1))^2
+        B = exp(-im*θ_p) * b / (1 + b*(exp(-im * θ_p) - 1))
+
+        push!(aj, a)
+        push!(bj, b)
+        push!(Aj, A)
+        push!(Bj, B)
+    end
+    return OSRC_op(wavenumber, Np, θ_p, curvature, aj, bj, Aj, Bj)
 end
 
 # TODO: maybe better implementation type
@@ -40,23 +64,8 @@ function scalartype(op::OSRC_op)
     end
 end
 
-function get_a_j(OSRC, j::Int)
-    return 2/(2*OSRC.Np+1)*(sin(j*pi/(2*OSRC.Np+1)))^2
-end
-
-function get_b_j(OSRC, j::Int)
-    return (cos(j*pi/(2*OSRC.Np+1)))^2
-end
-
-function get_A_j(OSRC, j::Int)
-    return exp(-im*OSRC.θ_p/2) * get_a_j(OSRC,j) / (1 + get_b_j(OSRC,j)*(exp(-im * OSRC.θ_p) - 1))^2
-end
-function get_B_j(OSRC, j::Int)
-    return exp(-im*OSRC.θ_p) * get_b_j(OSRC,j) / (1 + get_b_j(OSRC,j)*(exp(-im * OSRC.θ_p) - 1))
-end
-
 function get_RNp(z, OSRC)
-    R_Np = 1 + sum(get_a_j(OSRC,j)*z/(1+get_b_j(OSRC,j)*z) for j in 1:OSRC.Np)
+    R_Np = 1 + sum(OSRC.aj[j]*z/(1+OSRC.bj[j]*z) for j in 1:OSRC.Np)
     return R_Np
 end
 
@@ -67,16 +76,16 @@ end
 
 function get_R0(OSRC)
     C0 = get_C0(OSRC)
-    R0 = C0 + sum(get_A_j(OSRC,j)/get_B_j(OSRC,j) for j in 1:OSRC.Np)
+    R0 = C0 + sum(OSRC.Aj[j]/OSRC.Bj[j] for j in 1:OSRC.Np)
     return R0
 end
 
 function rotated_pade(z, OSRC)
-    return get_R0(OSRC)*I - sum(get_A_j(OSRC, j)*I/(get_B_j(OSRC, j)*(I + get_B_j(OSRC, j)*z)) for j in 1:OSRC.Np)
+    return get_R0(OSRC)*I - sum(OSRC.Aj[j]*I/(OSRC.Bj[j]*(I + OSRC.Bj[j]*z)) for j in 1:OSRC.Np)
 end
 
 function rotated_implicit_pade(get_Π, OSRC)
-    return get_R0(OSRC)*I - sum(get_A_j(OSRC, j)*I/(get_B_j(OSRC, j)*(get_Π(j, OSRC))) for j in 1:OSRC.Np)
+    return get_R0(OSRC)*I - sum(OSRC.Aj[j]*I/(OSRC.Bj[j]*(get_Π(j, OSRC))) for j in 1:OSRC.Np)
 end
 
 # # Projection and embedding of LinearMaps

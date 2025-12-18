@@ -15,12 +15,13 @@
 # \end{aligned}
 # ```
 # Relations like (1) correspond to the class of On-Surface Radiation Conditions (OSRC) methods.
-# More details of this OSRC operator are given in the paper <a href="https://www.researchgate.net/publication/261636307_Approximate_local_magnetic-to-electric_surface_operators_for_time-harmonic_Maxwell's_equations" target='new'> Approximate local magnetic-to-electric surface operators for time-harmonic Maxwell’s equations (C. Geuzaine et al. (2014))</a>.
 # 
 #
 # First we implement a rotating branch-cut rational Padé approximation of the square root function ``\sqrt{1+z^2}``.
 using SparseArrays
+using LinearAlgebra
 using BEAST
+import Polynomials
 
 struct OSRC_op <: Operator
     wavenumber::Float64
@@ -32,6 +33,8 @@ struct OSRC_op <: Operator
     Aj::Vector{ComplexF64}
     Bj::Vector{ComplexF64}
 end
+
+# more details of this OSRC operator are given in : TODO add
 
 function OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
     # get the real and rotated pade coefficients
@@ -56,12 +59,7 @@ end
 # TODO: maybe better implementation type
 function scalartype(op::OSRC_op)
     T = scalartype(op.wavenumber)
-    CT = Complex{T}
-    if op.curvature == 0.0
-        return T
-    else
-        return CT
-    end
+    return Complex{T}
 end
 
 function get_RNp(z, OSRC)
@@ -87,6 +85,38 @@ end
 function rotated_implicit_pade(get_Π, OSRC)
     return get_R0(OSRC)*I - sum(OSRC.Aj[j]*I/(OSRC.Bj[j]*(get_Π(j, OSRC))) for j in 1:OSRC.Np)
 end
+
+# inverse Pade
+
+# converting pade rational to polynomial object
+
+# get polynomial representation of pade and get zeros and poles
+
+function prod_poles(op::OSRC_op, range)
+    return prod(Polynomials.Polynomial([1, op.Bj[j]]) for j in range)
+end
+
+function A_j_polynomial(op::OSRC_op, j)
+    range = filter(x -> x != j, 1:op.Np)
+    return  Polynomials.Polynomial([0, op.Aj[j]]) * prod_poles(op, range)
+end
+
+function get_numerator(op::OSRC_op)
+    return BEAST.get_C0(op) *  prod_poles(op, 1:op.Np) + sum(A_j_polynomial(op, j) for j in 1:op.Np)
+end
+
+function get_denumerator(op::OSRC_op)
+    return prod_poles(op, 1:op.Np)
+end
+
+function rational_poles(op::OSRC_op) 
+    return Polynomials.roots(get_denumerator(op))
+end
+
+function rational_zeros(op::OSRC_op) 
+    return Polynomials.roots(get_numerator(op))
+end
+
 
 # # Projection and embedding of LinearMaps
 # Construct LinearMaps which slice out a relevant submatrix of a LinearMap (without constructing the actual LinearMap).
@@ -123,7 +153,7 @@ function SlicedLinearMap(A::LinearMap, rows::UnitRange{Int}, cols::UnitRange{Int
 end
 
 # The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
-function MtE_damping(op::OSRC_op)
+function MtE_damping(op)
     return 0.39*op.wavenumber^(1/3)*op.curvature^(2/3)
 end
 
@@ -240,7 +270,7 @@ function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
     κ_ϵ = κ + im*ϵ
 
     #create auxilary basis functions
-    L0_int = BEAST.lagrangec0d1(X.geo; dirichlet = false)
+    L0_int = BEAST.lagrangec0d1(X.geo)
     grad_L0_int = BEAST.gradient(L0_int)
     # Define the relevant function spaces
     curl_X = BEAST.curl(X)
@@ -294,4 +324,86 @@ function Cheap_OSRC_preconditioner(Γ, κ; curvature = 1)
     N_ϵ = sparse(assemble((1/κ_ϵ)^2 * Id, curl_Nd, curl_Nd))
     G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
     return G_N_ϵ_inv
+end
+
+# More details of this OSRC operator are given in the paper <a href="https://www.researchgate.net/publication/261636307_Approximate_local_magnetic-to-electric_surface_operators_for_time-harmonic_Maxwell's_equations" target='new'> Approximate local magnetic-to-electric surface operators for time-harmonic Maxwell’s equations (C. Geuzaine et al. (2014))</a>.
+
+struct EtM_OSRC_op
+    wavenumber::Float64
+    Np::Int
+    θ_p::Float64
+    curvature::Float64
+    r0::ComplexF64
+    rj::Vector{ComplexF64}
+    qj::Vector{ComplexF64}
+end
+
+# construct inverse pade rational
+
+function EtM_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
+    # construct MtE operator with regular rotational branch cut Padé approximation
+    MtE_OSRC_op = OSRC_op(wavenumber, Np, θ_p, curvature)
+    pade_inv_num = get_denumerator(MtE_OSRC_op)
+    pade_inv_denum = get_numerator(MtE_OSRC_op)
+    qj = Polynomials.roots(pade_inv_denum)
+
+    # polynmial division to get constant term r0
+    r0, remainder = Polynomials.divrem(pade_inv_num, pade_inv_denum)  
+    P_deriv = Polynomials.derivative(pade_inv_denum)
+    residues = [remainder(p)/P_deriv(p) for p in qj] # compute residues=poles at every point
+    rj = residues
+    return EtM_OSRC_op(wavenumber, Np, θ_p, curvature, r0, rj, qj)
+end
+
+function rational_pade_inv(z, op::EtM_OSRC_op)
+    s = op.r0
+    for (r, q) in zip(op.rj, op.qj)
+        s += r / (z - q)
+    end
+    return s
+end
+
+
+function  assemble(op::EtM_OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
+    ϵ = BEAST.MtE_damping(op)
+    κ = op.wavenumber
+    κ_ϵ = κ + im*ϵ
+
+    # assemble M2 matrix
+
+    curl_X = BEAST.curl(X);
+    curl_Y = BEAST.curl(Y);
+    P1 = BEAST.lagrangec0d1(X.geo);
+    P1_grad = BEAST.gradient(P1);
+
+    N_X = numfunctions(X)
+    N_Y = numfunctions(Y)
+
+    Id = BEAST.Identity();
+    A = assemble(Id, X, Y);
+    N = (1/κ_ϵ)^2 * assemble(Id, curl_X, curl_Y);
+    K = κ_ϵ^2 * assemble(Id, P1, P1);
+    L = assemble(Id, X, P1_grad);
+    L_transpose = assemble(Id, P1_grad, Y)
+
+    function get_M2(j)
+        Bq = - (op.qj[j]*A + N);
+        M2 = [Bq L
+              L_transpose K];
+        M2_inv = BEAST.lu(M2)
+        SliceMap = BEAST.SlicedLinearMap(M2_inv, 1:N_X, 1:N_Y)
+        P = SliceMap.P
+        Q = SliceMap.Q
+        M2_inv_sliced = P*M2_inv*Q
+        return M2_inv_sliced
+    end
+
+    A_inv = BEAST.lu(A)
+    EtM_map = A_inv * (op.r0*I + A * sum(op.rj[j]*get_M2(j) for j in 1:op.Np))*(A - N)
+    return EtM_map
+end
+
+function scalartype(op::EtM_OSRC_op)
+    T = scalartype(op.wavenumber)
+    return Complex{T}
 end

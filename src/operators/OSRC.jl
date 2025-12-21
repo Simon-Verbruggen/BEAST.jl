@@ -35,7 +35,7 @@ struct OSRC_op <: Operator
 end
 
 # more details of this OSRC operator are given in : TODO add
-
+imag_conv = -im     # Geuzaine paper uses other time-harmonic convention -> swap to match BEAST time-harmonic
 function OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
     # get the real and rotated pade coefficients
     aj = ComplexF64[]
@@ -45,8 +45,8 @@ function OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64
     for j in 1:Np
         a =  2/(2*Np+1)*(sin(j*pi/(2*Np+1)))^2
         b = (cos(j*pi/(2*Np+1)))^2
-        A = exp(-im*θ_p/2) * a / (1 + b*(exp(-im * θ_p) - 1))^2
-        B = exp(-im*θ_p) * b / (1 + b*(exp(-im * θ_p) - 1))
+        A = exp(-imag_conv*θ_p/2) * a / (1 + b*(exp(-imag_conv * θ_p) - 1))^2
+        B = exp(-imag_conv*θ_p) * b / (1 + b*(exp(-imag_conv * θ_p) - 1))
 
         push!(aj, a)
         push!(bj, b)
@@ -68,7 +68,7 @@ function get_RNp(z, OSRC)
 end
 
 function get_C0(OSRC)
-    C0 = exp(im*OSRC.θ_p/2) * get_RNp((exp(-im*OSRC.θ_p)-1), OSRC)
+    C0 = exp(imag_conv*OSRC.θ_p/2) * get_RNp((exp(-imag_conv*OSRC.θ_p)-1), OSRC)
     return C0
 end
 
@@ -174,7 +174,7 @@ function MtE_operator(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
     R_0 = get_R0(pade_struct)
 
     ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
-    κ_ϵ = κ + im*ϵ
+    κ_ϵ = κ + imag_conv*ϵ
 
     # Define the relevant function spaces
     Nd = BEAST.nedelec(Γ);
@@ -193,14 +193,14 @@ function MtE_operator(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
     # Calculate the inverse via Schur's complement
     K_ϵ_inv = BEAST.lu(K_ϵ)
     function phi_j_inv_Schur(j)
-        B_j = get_B_j(pade_struct, j)
+        B_j = op.Bj[j]
         Π = sparse(G - B_j * N_ϵ - B_j * L * K_ϵ_inv * L_transpose)
         Π_inv = BEAST.lu(Π)
         return Π_inv
     end
 
     # Finally, construct the MtE_map
-    sum_Π_inv_matrix = sum(get_A_j(pade_struct, j)/get_B_j(pade_struct, j) * phi_j_inv_Schur(j) for j in 1:Np)
+    sum_Π_inv_matrix = sum(op.Aj[j]/op.Bj[j] * phi_j_inv_Schur(j) for j in 1:Np)
     G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
     MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
     return MtE_map
@@ -212,7 +212,7 @@ function MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, s
       R_0 = get_R0(pade_struct)
 
       ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
-      κ_ϵ = κ + im*ϵ
+      κ_ϵ = κ + imag_conv*ϵ
 
       # Define the relevant function spaces
       Nd = BEAST.nedelec(Γ);
@@ -233,7 +233,7 @@ function MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, s
 
       # construct the sparse system matrix and invert
       function create_j_phi_matrix17(j)
-            B_j = get_B_j(pade_struct, j)
+            B_j = op.Bj[j]
             # blockmatrix of sparse matrices
             AXY = [G-B_j*N_ϵ       B_j*L
                   L_transpose     K_ϵ]
@@ -245,7 +245,7 @@ function MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, s
             return SXY_sliced
       end
 
-      sum_Π_inv_matrix = sum(get_A_j(pade_struct, j)/get_B_j(pade_struct, j) * create_j_phi_matrix17(j) for j in 1:Np)
+      sum_Π_inv_matrix = sum(op.Aj[j]/op.Bj[j] * create_j_phi_matrix17(j) for j in 1:Np)
       G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
 
       MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
@@ -267,7 +267,7 @@ function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
 
     ϵ = MtE_damping(op)
     κ = op.wavenumber
-    κ_ϵ = κ + im*ϵ
+    κ_ϵ = κ + imag_conv*ϵ
 
     #create auxilary basis functions
     L0_int = BEAST.lagrangec0d1(X.geo)
@@ -290,7 +290,7 @@ function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
 
     # construct the sparse system matrix and invert
     function create_j_phi_matrix17(j)
-        B_j = get_B_j(op, j)
+        B_j = op.Bj[j]
         # blockmatrix of sparse matrices
         AXY = [G-B_j*N_ϵ       B_j*L
                 L_transpose     K_ϵ]
@@ -302,7 +302,7 @@ function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
         return SXY_sliced
     end
 
-    sum_Π_inv_matrix = sum(get_A_j(op, j)/get_B_j(op, j) * create_j_phi_matrix17(j) for j in 1:op.Np)
+    sum_Π_inv_matrix = sum(op.Aj[j]/op.Bj[j] * create_j_phi_matrix17(j) for j in 1:op.Np)
     G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
 
     MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
@@ -313,7 +313,7 @@ end
 
 function Cheap_OSRC_preconditioner(Γ, κ; curvature = 1)
     ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
-    κ_ϵ = κ + im*ϵ
+    κ_ϵ = κ + imag_conv*ϵ
 
     Nd = BEAST.nedelec(Γ);
     curl_Nd = BEAST.curl(Nd)
@@ -367,7 +367,7 @@ end
 function  assemble(op::EtM_OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
     ϵ = BEAST.MtE_damping(op)
     κ = op.wavenumber
-    κ_ϵ = κ + im*ϵ
+    κ_ϵ = κ + imag_conv*ϵ
 
     # assemble M2 matrix
 

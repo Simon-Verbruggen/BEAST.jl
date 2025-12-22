@@ -21,7 +21,7 @@
 using SparseArrays
 using LinearAlgebra
 using BEAST
-import Polynomials
+#import Polynomials
 
 struct OSRC_op <: Operator
     wavenumber::Float64
@@ -151,16 +151,6 @@ end
 # The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
 function MtE_damping(op)
     return 0.39*op.wavenumber^(1/3)*op.curvature^(2/3)
-end
-
-# TODO: deprecated -> remove
-struct Pade_approx
-    Np::Int
-    θ_p::Float64
-end
-
-function MtE_damping(;wavenumber=nothing, curvature=nothing)
-    return 0.39*wavenumber^(1/3)*curvature^(2/3)
 end
 
 # Next, the MtE operator is assembled as a linear map. This is implemented according to the discretization in the paper.
@@ -298,47 +288,10 @@ end
 
 ##### Old/deprecated functions #####
 
-function MtE_operator(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
-    pade_struct = Pade_approx(Np, theta_p);     # load in pade struct for pade coefficients and constants
-    R_0 = get_R0(pade_struct)
 
-    ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
-    κ_ϵ = κ + imag_conv*ϵ
-
-    # Define the relevant function spaces
-    Nd = BEAST.nedelec(Γ);
-    L0_int = BEAST.lagrangec0d1(Γ);
-    grad_L0_int = BEAST.gradient(L0_int)
-    curl_Nd = BEAST.curl(Nd)
-
-    # Assemble the submatrices of the blockmatrix of the system
-    Id = BEAST.Identity();
-    G = assemble(Id, Nd, Nd)
-    N_ϵ = sparse(assemble((1/κ_ϵ)^2 * Id, curl_Nd, curl_Nd))
-    K_ϵ = sparse(assemble(κ_ϵ^2 * Id, L0_int, L0_int))
-    L = assemble(Id, Nd, grad_L0_int)
-    L_transpose = assemble(Id, grad_L0_int, Nd)
-
-    # Calculate the inverse via Schur's complement
-    K_ϵ_inv = BEAST.lu(K_ϵ)
-    function phi_j_inv_Schur(j)
-        B_j = op.Bj[j]
-        Π = sparse(G - B_j * N_ϵ - B_j * L * K_ϵ_inv * L_transpose)
-        Π_inv = BEAST.lu(Π)
-        return Π_inv
-    end
-
-    # Finally, construct the MtE_map
-    sum_Π_inv_matrix = sum(op.Aj[j]/op.Bj[j] * phi_j_inv_Schur(j) for j in 1:Np)
-    G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
-    MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
-    return MtE_map
-end
-
-
-function MtE_operator_sparse(Γ, κ, Np::Int, theta_p::Float64; curvature = 1, solver=BEAST.lu, kwargs...)
-      pade_struct = Pade_approx(Np, theta_p);     # load in pade struct for pade coefficients and constants
-      R_0 = get_R0(pade_struct)
+function MtE_operator_sparse(Γ, κ, Np::Int, θ_p::Float64; curvature = 1, solver=BEAST.lu, kwargs...)
+      op = OSRC_op(κ, Np, θ_p, curvature)
+      R_0 = get_R0(op)
 
       ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
       κ_ϵ = κ + imag_conv*ϵ
@@ -392,7 +345,8 @@ function MtE_operator_GMRES(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
 end
 
 function Cheap_OSRC_preconditioner(Γ, κ; curvature = 1)
-    ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
+    op = OSRC_op(κ, 1, 0.0, curvature)
+    ϵ = MtE_damping(op)
     κ_ϵ = κ + imag_conv*ϵ
 
     Nd = BEAST.nedelec(Γ);

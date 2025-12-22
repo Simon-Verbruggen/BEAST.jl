@@ -12,7 +12,10 @@ using LinearAlgebra
 end
 
 @target OSRC_preconditioner (geo,;κ, Np, curvature) -> begin
-      MtE_map = BEAST.MtE_operator(geo.Γ, κ, Np, pi/2, curvature=curvature)
+      θ_p = pi/2        # angle for rotating branch cut pade approximation. Best choice according to paper.
+      OSRC_operator = BEAST.OSRC_op(κ, Np, θ_p, curvature);
+      Nd = BEAST.nedelec(geo.Γ)
+      MtE_map = assemble(OSRC_operator, Nd, Nd)
       return (;MtE=MtE_map)
 end
 

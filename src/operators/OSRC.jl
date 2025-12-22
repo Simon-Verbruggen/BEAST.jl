@@ -21,7 +21,7 @@
 using SparseArrays
 using LinearAlgebra
 using BEAST
-#import Polynomials
+import Polynomials
 
 struct MtE_OSRC_op <: Operator
     wavenumber::Float64
@@ -219,7 +219,7 @@ end
 
 function EtM_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
     # construct MtE operator with regular rotational branch cut Padé approximation
-    MtE_OSRC_op = MtE_OSRC_op(wavenumber, Np, θ_p, curvature)
+    MtE_OSRC_op = BEAST.MtE_OSRC_op(wavenumber, Np, θ_p, curvature)
     pade_inv_num = get_denumerator(MtE_OSRC_op)
     pade_inv_denum = get_numerator(MtE_OSRC_op)
     qj = Polynomials.roots(pade_inv_denum)
@@ -289,7 +289,7 @@ end
 ##### Old/deprecated functions #####
 
 function MtE_operator_Schur(Γ, κ, Np::Int, θ_p::Float64; curvature = 1)
-    op = MtE_OSRC_op(κ, Np, θ_p, curvature)
+    op = BEAST.MtE_OSRC_op(κ, Np, θ_p, curvature)
     R_0 = get_R0(op)
 
     ϵ = MtE_damping(op)
@@ -326,10 +326,10 @@ function MtE_operator_Schur(Γ, κ, Np::Int, θ_p::Float64; curvature = 1)
 end
 
 function MtE_operator_sparse(Γ, κ, Np::Int, θ_p::Float64; curvature = 1, solver=BEAST.lu, kwargs...)
-      op = MtE_OSRC_op(κ, Np, θ_p, curvature)
+      op = BEAST.MtE_OSRC_op(κ, Np, θ_p, curvature)
       R_0 = get_R0(op)
 
-      ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
+      ϵ = MtE_damping(op)
       κ_ϵ = κ + imag_conv*ϵ
 
       # Define the relevant function spaces
@@ -381,7 +381,7 @@ function MtE_operator_GMRES(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
 end
 
 function Cheap_OSRC_preconditioner(Γ, κ; curvature = 1)
-    op = MtE_OSRC_op(κ, 1, 0.0, curvature)
+    op = BEAST.MtE_OSRC_op(κ, 1, 0.0, curvature)
     ϵ = MtE_damping(op)
     κ_ϵ = κ + imag_conv*ϵ
 

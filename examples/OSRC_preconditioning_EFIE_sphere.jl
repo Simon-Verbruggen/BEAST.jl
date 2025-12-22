@@ -13,9 +13,9 @@ end
 
 @target OSRC_preconditioner (geo,;κ, Np, curvature) -> begin
       θ_p = pi/2        # angle for rotating branch cut pade approximation. Best choice according to paper.
-      OSRC_operator = BEAST.OSRC_op(κ, Np, θ_p, curvature);
+      MtE_OSRC_operator = BEAST.MtE_OSRC_op(κ, Np, θ_p, curvature);
       Nd = BEAST.nedelec(geo.Γ)
-      MtE_map = assemble(OSRC_operator, Nd, Nd)
+      MtE_map = assemble(MtE_OSRC_operator, Nd, Nd)
       return (;MtE=MtE_map)
 end
 
@@ -88,7 +88,7 @@ end
 
 @sweep OSRC_sweep_discretizations (!solution_comparison,; h=[], κ=[], residual=[], Np=[], curvature=[]) -> (;sol=solution_comparison,)
 
-h_values = [0.5, 0.3]
+h_values = [0.5, 0.3, 0.20]
 low_frequency_κ = pi/10
 high_frequency_κ = pi*1.0
 

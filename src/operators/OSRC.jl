@@ -23,7 +23,7 @@ using LinearAlgebra
 using BEAST
 #import Polynomials
 
-struct OSRC_op <: Operator
+struct MtE_OSRC_op <: Operator
     wavenumber::Float64
     Np::Int
     θ_p::Float64
@@ -36,7 +36,7 @@ end
 
 # more details of this OSRC operator are given in :  <a href="https://arxiv.org/abs/2111.10761" target='new'> An OSRC Preconditioner for the EFIE (Betcke et al. (2021))</a>.
 imag_conv = -im     # The paper uses mathematical time-harmonic convention ``e^{-i \omega t}`` -> swap to match BEAST time-harmonic convention ``e^{i \omega t}``.
-function OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
+function MtE_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
     # get the real and rotated pade coefficients
     aj = ComplexF64[]
     bj = ComplexF64[]
@@ -53,10 +53,10 @@ function OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64
         push!(Aj, A)
         push!(Bj, B)
     end
-    return OSRC_op(wavenumber, Np, θ_p, curvature, aj, bj, Aj, Bj)
+    return MtE_OSRC_op(wavenumber, Np, θ_p, curvature, aj, bj, Aj, Bj)
 end
 
-function scalartype(op::OSRC_op)
+function scalartype(op::MtE_OSRC_op)
     T = scalartype(op.wavenumber)
     return Complex{T}
 end
@@ -88,28 +88,28 @@ end
 
 # get polynomial representation of pade and get zeros and poles
 
-function prod_poles(op::OSRC_op, range)
+function prod_poles(op::MtE_OSRC_op, range)
     return prod(Polynomials.Polynomial([1, op.Bj[j]]) for j in range)
 end
 
-function A_j_polynomial(op::OSRC_op, j)
+function A_j_polynomial(op::MtE_OSRC_op, j)
     range = filter(x -> x != j, 1:op.Np)
     return  Polynomials.Polynomial([0, op.Aj[j]]) * prod_poles(op, range)
 end
 
-function get_numerator(op::OSRC_op)
+function get_numerator(op::MtE_OSRC_op)
     return BEAST.get_C0(op) *  prod_poles(op, 1:op.Np) + sum(A_j_polynomial(op, j) for j in 1:op.Np)
 end
 
-function get_denumerator(op::OSRC_op)
+function get_denumerator(op::MtE_OSRC_op)
     return prod_poles(op, 1:op.Np)
 end
 
-function rational_poles(op::OSRC_op) 
+function rational_poles(op::MtE_OSRC_op) 
     return Polynomials.roots(get_denumerator(op))
 end
 
-function rational_zeros(op::OSRC_op) 
+function rational_zeros(op::MtE_OSRC_op) 
     return Polynomials.roots(get_numerator(op))
 end
 
@@ -155,7 +155,7 @@ end
 
 # Next, the MtE operator is assembled as a linear map. This is implemented according to the discretization in the paper.
 
-function assemble(op::OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
+function assemble(op::MtE_OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
     R_0 = get_R0(op)
 
     ϵ = MtE_damping(op)
@@ -219,7 +219,7 @@ end
 
 function EtM_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
     # construct MtE operator with regular rotational branch cut Padé approximation
-    MtE_OSRC_op = OSRC_op(wavenumber, Np, θ_p, curvature)
+    MtE_OSRC_op = MtE_OSRC_op(wavenumber, Np, θ_p, curvature)
     pade_inv_num = get_denumerator(MtE_OSRC_op)
     pade_inv_denum = get_numerator(MtE_OSRC_op)
     qj = Polynomials.roots(pade_inv_denum)
@@ -288,9 +288,45 @@ end
 
 ##### Old/deprecated functions #####
 
+function MtE_operator_Schur(Γ, κ, Np::Int, θ_p::Float64; curvature = 1)
+    op = MtE_OSRC_op(κ, Np, θ_p, curvature)
+    R_0 = get_R0(op)
+
+    ϵ = MtE_damping(op)
+    κ_ϵ = κ + imag_conv*ϵ
+
+    # Define the relevant function spaces
+    Nd = BEAST.nedelec(Γ);
+    L0_int = BEAST.lagrangec0d1(Γ);
+    grad_L0_int = BEAST.gradient(L0_int)
+    curl_Nd = BEAST.curl(Nd)
+
+    # Assemble the submatrices of the blockmatrix of the system
+    Id = BEAST.Identity();
+    G = assemble(Id, Nd, Nd)
+    N_ϵ = sparse(assemble((1/κ_ϵ)^2 * Id, curl_Nd, curl_Nd))
+    K_ϵ = sparse(assemble(κ_ϵ^2 * Id, L0_int, L0_int))
+    L = assemble(Id, Nd, grad_L0_int)
+    L_transpose = assemble(Id, grad_L0_int, Nd)
+
+    # Calculate the inverse via Schur's complement
+    K_ϵ_inv = BEAST.lu(K_ϵ)
+    function phi_j_inv_Schur(j)
+        B_j = op.Bj[j]
+        Π = sparse(G - B_j * N_ϵ - B_j * L * K_ϵ_inv * L_transpose)
+        Π_inv = BEAST.lu(Π)
+        return Π_inv
+    end
+
+    # Finally, construct the MtE_map
+    sum_Π_inv_matrix = sum(op.Aj[j]/op.Bj[j] * phi_j_inv_Schur(j) for j in 1:Np)
+    G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
+    MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
+    return MtE_map
+end
 
 function MtE_operator_sparse(Γ, κ, Np::Int, θ_p::Float64; curvature = 1, solver=BEAST.lu, kwargs...)
-      op = OSRC_op(κ, Np, θ_p, curvature)
+      op = MtE_OSRC_op(κ, Np, θ_p, curvature)
       R_0 = get_R0(op)
 
       ϵ = MtE_damping(wavenumber=κ, curvature=curvature)
@@ -345,7 +381,7 @@ function MtE_operator_GMRES(Γ, κ, Np::Int, theta_p::Float64; curvature = 1)
 end
 
 function Cheap_OSRC_preconditioner(Γ, κ; curvature = 1)
-    op = OSRC_op(κ, 1, 0.0, curvature)
+    op = MtE_OSRC_op(κ, 1, 0.0, curvature)
     ϵ = MtE_damping(op)
     κ_ϵ = κ + imag_conv*ϵ
 

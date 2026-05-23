@@ -9,8 +9,8 @@ struct GMRESSolver{T,L,R,PL,PR} <: LinearMap{T}
     abstol::R
     reltol::R
     verbose::Bool
-    left_preconditioner::PL
-    right_preconditioner::PR
+    left_preconditioner::PL    # follows the IterativeSolvers convention
+    right_preconditioner::PR   # follows the IterativeSolvers convention
 end
 
 
@@ -45,7 +45,7 @@ function GMRESSolver(op::L;
         if Pr == nothing
             Pr = BEAST.Preconditioner(right_preconditioner)
         else
-            error("Either supply Pl or left_preconditioner, not both.")
+            error("Either supply Pr or right_preconditioner, not both.")
         end
     end
     @assert Pr != nothing
@@ -54,7 +54,7 @@ function GMRESSolver(op::L;
     @assert m == n
 
     maxiter == 0 && (maxiter = n)
-    restart == 0 && (restart = n)
+    restart == 0 && (restart = min(maxiter, n))
 
     PL = typeof(Pl)
     PR = typeof(Pr)
@@ -66,15 +66,33 @@ end
 operator(solver::GMRESSolver) = solver.linear_operator
 
 
-function solve(solver::GMRESSolver, b; abstol=solver.abstol, reltol=solver.reltol)
+function solve(solver::GMRESSolver, b;
+    abstol=solver.abstol,
+    reltol=solver.reltol,
+    left_preconditioner=nothing,
+    right_preconditioner=nothing)
+
     T = promote_type(eltype(solver), eltype(b))
     x = similar(Array{T}, axes(solver)[2])
     fill!(x,0)
-    x, ch = solve!(x, solver, b; abstol, reltol)
+    x, ch = solve!(x, solver, b;
+        abstol, reltol, left_preconditioner, right_preconditioner)
 end
 
 
-function solve!(x, solver::GMRESSolver, b; abstol=solver.abstol, reltol=solver.reltol)
+function solve!(x, solver::GMRESSolver, b;
+    abstol=solver.abstol,
+    reltol=solver.reltol,
+    left_preconditioner=nothing,
+    right_preconditioner=nothing)
+
+    Pl = left_preconditioner == nothing ?
+        solver.left_preconditioner :
+        BEAST.Preconditioner(left_preconditioner)
+    Pr = right_preconditioner == nothing ?
+        solver.right_preconditioner :
+        BEAST.Preconditioner(right_preconditioner)
+
     op = operator(solver)
     x, ch = IterativeSolvers.gmres!(x, op, b; 
         log=true, 
@@ -83,8 +101,25 @@ function solve!(x, solver::GMRESSolver, b; abstol=solver.abstol, reltol=solver.r
         reltol=reltol,
         abstol=abstol,
         verbose=solver.verbose,
-        Pl=solver.left_preconditioner,
-        Pr=solver.right_preconditioner)
+        Pl=Pl,
+        Pr=Pr)
+
+    # itr = IterativeSolvers.gmres_iterable!(x, op, b; 
+    #     maxiter=solver.maxiter,
+    #     restart=solver.restart,
+    #     reltol=reltol,
+    #     abstol=abstol,
+    #     Pl=Pl,
+    #     Pr=Pr,
+    # )
+
+    # iters = 0
+    # for (i,residual) in enumerate(itr)
+    #     solver.verbose && @show (i,residual)
+    #     iters += 1
+    # end
+
+    # return x, (iters=iters, isconverged=true)
     return x, ch
 end
 

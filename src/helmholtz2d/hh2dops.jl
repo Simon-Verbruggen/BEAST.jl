@@ -240,37 +240,126 @@ function quaddata(op::HelmholtzOperator2D,
 
     T = coordtype(test_charts[1])
 
-    tqd = quadpoints(test_local_space,  test_charts,  (qs.outer_rule,))
+    tqd = quadpoints(test_local_space, test_charts, (qs.outer_rule,))
     bqd = quadpoints(trial_local_space, trial_charts, (qs.inner_rule,))
 
     leg = (
-      convert.(NTuple{2,T},_legendre(qs.sauter_schwab_common_vert,0,1)),
-      convert.(NTuple{2,T},_legendre(qs.sauter_schwab_common_edge,0,1)),
-      convert.(NTuple{2,T},_legendre(qs.sauter_schwab_common_face,0,1)),
+        convert.(NTuple{2,T}, _legendre(qs.sauter_schwab_common_vert, 0, 1)),
+        convert.(NTuple{2,T}, _legendre(qs.sauter_schwab_common_edge, 0, 1)),
+        convert.(NTuple{2,T}, _legendre(qs.sauter_schwab_common_face, 0, 1)),
     )
 
     mrw = (
-     convert.(NTuple{2,T},BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_vert,0,1)),
-     convert.(NTuple{2,T},BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_edge,0,1)),
-     convert.(NTuple{2,T},BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_face,0,1)),
+        convert.(NTuple{2,T}, BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_vert, 0, 1)),
+        convert.(NTuple{2,T}, BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_edge, 0, 1)),
+        convert.(NTuple{2,T}, BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_face, 0, 1)),
     )
 
     return (tpoints=tqd, bpoints=bqd, gausslegendre=leg, marokhlinwandura=mrw)
 end
 
 function quadrule(op::HelmholtzOperator2D, g::LagrangeRefSpace, f::LagrangeRefSpace,
-    i, τ::CompScienceMeshes.Simplex{<:Any, 1},
-    j, σ::CompScienceMeshes.Simplex{<:Any, 1},
+    i, τ::CompScienceMeshes.Simplex{<:Any,1},
+    j, σ::CompScienceMeshes.Simplex{<:Any,1},
     qd, qs::DoubleNumSauterQstrat)
 
     hits = _numhits(τ, σ)
     @assert hits <= 2
 
-    hits == 2 && return BEAST.SauterSchwabQuadrature1D.CommonEdge(qd.marokhlinwandura[2], qd.gausslegendre[2])
-    hits == 1 && return BEAST.SauterSchwabQuadrature1D.CommonVertex(qd.marokhlinwandura[1], qd.gausslegendre[1])
+    hits == 2 && return BEAST.SauterSchwabQuadrature1D.CommonEdge(qd.marokhlinwandura[2],
+        qd.gausslegendre[2])
+    hits == 1 && return BEAST.SauterSchwabQuadrature1D.CommonVertex(qd.marokhlinwandura[1],
+        qd.gausslegendre[1])
 
     return DoubleQuadRule(
-        qd.tpoints[1,i],
-        qd.bpoints[1,j],
+        qd.tpoints[1, i],
+        qd.bpoints[1, j],
+    )
+end
+
+function quaddata(op::HelmholtzOperator2D,
+    test_local_space::RefSpace, trial_local_space::RefSpace,
+    test_charts, trial_charts, qs::DoubleNumSauterTellesQstrat)
+
+    T = coordtype(test_charts[1])
+
+    tqd = quadpoints(test_local_space, test_charts, (qs.outer_rule,))
+    bqd = quadpoints(trial_local_space, trial_charts, (qs.inner_rule,))
+
+    leg = (
+        convert.(NTuple{2,T}, _legendre(qs.sauter_schwab_common_vert, 0, 1)),
+        convert.(NTuple{2,T}, _legendre(qs.sauter_schwab_common_edge, 0, 1))
+    )
+
+    tel = (
+        convert.(NTuple{2,T}, _legendre(qs.telles_inner_rule, 0, 1)),
+        convert.(NTuple{2,T}, _legendre(qs.telles_outer_rule, 0, 1))
+    )
+
+    mrw = (
+        convert.(NTuple{2,T},
+            BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_vert, 0, 1)),
+        convert.(NTuple{2,T},
+            BEAST.SauterSchwabQuadrature1D._MRWrules(qs.sauter_schwab_common_edge, 0, 1))
+    )
+
+    return (tpoints=tqd, bpoints=bqd, gausslegendre=leg, telles=tel, marokhlinwandura=mrw)
+end
+
+function quadrule(op::HelmholtzOperator2D, g::LagrangeRefSpace, f::LagrangeRefSpace,
+    i, τ::CompScienceMeshes.Simplex{<:Any,1},
+    j, σ::CompScienceMeshes.Simplex{<:Any,1},
+    qd, qs::DoubleNumSauterTellesQstrat)
+    #Telles was found to be more accurate for angles ϕ<10°
+    max_angle_deg = 10
+    hits = _numhits(τ, σ)
+    @assert hits <= 2
+    if hits == 1            #Common Vertex case
+
+        #we find the angle between test and trial edge by using the tangents of the edges.
+        α = acos((τ.tangents ⋅ σ.tangents) / norm(τ.tangents) * norm(σ.tangents))
+        if α * (180 / π) > max_angle_deg
+            return BEAST.SauterSchwabQuadrature1D.CommonVertex(qd.marokhlinwandura[1],
+                qd.gausslegendre[1])
+        else
+            return BEAST.TellesQuadrature.TellesRule2D(qd.telles[2],
+                qd.telles[1])
+        end
+    elseif hits == 2        #Common Edge case
+        return BEAST.SauterSchwabQuadrature1D.CommonEdge(qd.marokhlinwandura[2],
+            qd.gausslegendre[2])
+    else                    #Near Singular case
+        #in testing for parallel edges, it was found that Telles starts to yield a benefit
+        #once there is a distance of about <= 0.5 * edge length between the edges. We
+        #use a circle centered around the midpoint of the test edge with a radius of
+        #0.5 * edge length to check if the trial edge is close enough to the test edge
+        #to justify the use of Telles.
+        test_midpoint = cartesian(neighborhood(τ, 0.5))
+        nullpoint = cartesian(neighborhood(σ, 0.0))
+        onepoint = cartesian(neighborhood(σ, 1.0))
+        t0 = test_midpoint - onepoint
+        t1 = test_midpoint - nullpoint
+        #if any of the endpoints of the trial edge is within the circle, we use Telles.
+        if norm(t0) / τ.volume <= 0.5 || norm(t1) / τ.volume <= 0.5
+            return BEAST.TellesQuadrature.TellesRule2D(qd.telles[2], qd.telles[1])
+        else
+            t2 = cartesian(neighborhood(σ, 1.0)) - nullpoint
+            #there exists a point closer to the test edge than the endpoints of the trial
+            #edge iff the dot product changes sign when multiplying the seperation vectors
+            #with one and the same tangent due to the nature of the cos: a⋅b = |a||b|cos(ϕ)
+            if (t0 ⋅ t2) * (t1 ⋅ t2) < 0
+                ϕ = acos(dot(t1, t2) / (norm(t1) * norm(t2)))
+                #if the relative distance is sufficiently small we use Telles
+                if norm(t1) * sin(ϕ) / τ.volume <= 0.5
+                    return BEAST.TellesQuadrature.TellesRule2D(qd.telles[2],
+                        qd.telles[1])
+                end
+            end
+        end
+    end
+
+    return DoubleQuadRule(  #Common case --> Gauss
+        qd.tpoints[1, i],
+        qd.bpoints[1, j],
     )
 end

@@ -7,94 +7,94 @@ Compute the value of the function with the given collection of coeffient in the 
 """
 function facecurrents(coeffs, basis)
 
-	T = eltype(coeffs)
-	RT = real(T)
+    T = eltype(coeffs)
+    RT = real(T)
 
-	mesh = geometry(basis)
-	dom = domain(chart(mesh, first(mesh)))
+    mesh = geometry(basis)
+    dom = domain(chart(mesh, first(mesh)))
 
-	refs = refspace(basis)
-	numrefs = numfunctions(refs, dom)
+    refs = refspace(basis)
+    numrefs = numfunctions(refs, dom)
 
-	cells, tad, a2g = assemblydata(basis)
+    cells, tad, a2g = assemblydata(basis)
 
-	D = dimension(mesh)
-	# U = D+1
-	U = 3
+    D = dimension(mesh)
+    # U = D+1
+    U = 3
 
-	# TODO: remove ugliness
-	vals = refs(center(first(cells)))
-	PT = typeof(first(coeffs)*vals[1][1])
+    # TODO: remove ugliness
+    vals = refs(center(first(cells)))
+    PT = typeof(first(coeffs) * vals[1][1])
 
-	fcr = zeros(PT, numcells(mesh))
+    fcr = zeros(PT, numcells(mesh))
 
-	for (t,cell) in enumerate(cells)
+    for (t, cell) in enumerate(cells)
 
-		mps = neighborhood(cell, ones(RT,D)/(D+1))
+        mps = neighborhood(cell, ones(RT, D) / (D + 1))
         vals = refs(mps)
 
-		# assemble in the right hand side vector
-		for i in 1 : numrefs
-			fx = vals[i][1]
-            for (m,a) in tad[t,i]
-				# fcr[t] += coeffs[m] * a * fx
-				fcr[a2g[t]] += coeffs[m] * a * fx
-			end
-		end
-	end
+        # assemble in the right hand side vector
+        for i in 1:numrefs
+            fx = vals[i][1]
+            for (m, a) in tad[t, i]
+                # fcr[t] += coeffs[m] * a * fx
+                fcr[a2g[t]] += coeffs[m] * a * fx
+            end
+        end
+    end
 
-	return fcr, geometry(basis)
+    return fcr, geometry(basis)
 end
 
 function facecurrents(coeffs, basis::SpaceTimeBasis)
 
-	space_basis = basis.space
-	time_basis = basis.time
+    space_basis = basis.space
+    time_basis = basis.time
 
-	Nt = numfunctions(time_basis)
-	Δt = timestep(time_basis)
+    Nt = numfunctions(time_basis)
+    Δt = timestep(time_basis)
 
-	refs = refspace(space_basis)
-	trefs = refspace(time_basis)
-	numrefs = numfunctions(refs)
-	tnumrefs = numfunctions(trefs)
+    refs = refspace(space_basis)
+    trefs = refspace(time_basis)
+    numrefs = numfunctions(refs)
+    tnumrefs = numfunctions(trefs)
 
-	cells, ad = assemblydata(space_basis)
-	tcells, tad = assemblydata(time_basis)
+    cells, ad = assemblydata(space_basis)
+    tcells, tad = assemblydata(time_basis)
 
-	mesh = geometry(space_basis)
-	T = eltype(coeffs)
-	D = dimension(mesh)
-	U = D+1
+    mesh = geometry(space_basis)
+    T = eltype(coeffs)
+    D = dimension(mesh)
+    U = D + 1
 
-	# TODO: express relative to input types
-	PT = SVector{U, T}
-	fcr = zeros(PT, numcells(mesh), Nt)
+    # TODO: express relative to input types
+    PT = SVector{U,T}
+    fcr = zeros(PT, numcells(mesh), Nt)
 
-	for (k,tcell) in enumerate(tcells)
-		tmps = neighborhood(tcell,1)
-		tvals = trefs(tmps)
-		for (p,cell) in enumerate(cells)
-			mps = center(cell)
-	        vals = refs(mps)
+    for (k, tcell) in enumerate(tcells)
+        tmps = neighborhood(tcell, 1)
+        tvals = trefs(tmps)
+        for (p, cell) in enumerate(cells)
+            mps = center(cell)
+            vals = refs(mps)
 
-			# assemble
-			for i in 1:numrefs
-				fx = vals[i][1]
-				for j in 1:tnumrefs
-					tfx = tvals[j]
-	    			for (m,a) in ad[p,i]
-						for (n,b) in tad[k,j]
-							fcr[p,k] += (coeffs[m,n] * tfx * b) * a * fx
-						end
-					end
-				end
-			end
+            # assemble
+            for i in 1:numrefs
+                fx = vals[i][1]
+                for j in 1:tnumrefs
+                    tfx = tvals[j]
+                    for (m, a) in ad[p, i]
+                        for (n, b) in tad[k, j]
+                            fcr[p, k] += (coeffs[m, n] * tfx * b) * a * fx
+                        end
+                    end
+                end
+            end
 
-		end
-	end
+        end
+    end
 
-	return fcr, geometry(space_basis)
+    return fcr, geometry(space_basis)
 end
 
 function facecurrents(u, X1, Xs...)
@@ -129,6 +129,9 @@ function facecurrents(u, X::DirectProductSpace)
 	fcr, m
 end
 
+struct SingleNumQRule{A}
+    qps::A
+end
 
 """
 	potential(op, points, coeffs, basis)
@@ -270,7 +273,26 @@ function potential!(store, op, points, basis::SpaceTimeBasis)
 
 end
 
-function farfieldlocal!(zlocal,op,refspace,y,el,qr)
+
+function farfieldlocal!(zlocal, op, refspace, y, el, qr::SingleNumQRule)
+
+    for q in qr.qps
+        x = q.point
+        F = q.value
+        dx = q.weight
+
+        krn = kernelvals(op, y, x)
+        for r in 1:length(zlocal)
+            i = integrand(op, krn, y, F[r], x)
+            i *= dx
+            zlocal[r] += i
+        end
+
+    end
+
+end
+
+function farfieldlocal!(zlocal, op, refspace, y, el, qr)
 
     for q in qr
         x = q.point
@@ -287,11 +309,29 @@ function farfieldlocal!(zlocal,op,refspace,y,el,qr)
 
 end
 
-function farfieldlocal!(zlocal,op,trialrefs, timerefs,
-        p, testel, q, trialel, k, timeel, tb,quadrule)
+function farfieldlocal!(zlocal, op, refspace, y, el, qr::TellesQuadrature.TellesRule1D)
+    igd = (trial_chart=el,)
+    for q in qr.qps
+        q = TellesQuadrature.tellespoints(
+            igd, refspace, y, q)
+        x = q.point
+        F = q.value
+        dx = q.weight
+        krn = kernelvals(op, y, x)
+        for r in 1:length(zlocal)
+            i = integrand(op, krn, y, F[r], x)
+            i *= dx
+            zlocal[r] += i
+        end
 
-	M,N = size(zlocal)
-	Δt = tb.timestep
+    end
+end
+
+function farfieldlocal!(zlocal, op, trialrefs, timerefs,
+    p, testel, q, trialel, k, timeel, tb, quadrule)
+
+    M, N = size(zlocal)
+    Δt = tb.timestep
 
     for qr in quadrule[1]
         x = qr.point

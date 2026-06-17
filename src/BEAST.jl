@@ -254,6 +254,8 @@ include("quadrature/nonconformingtouchqrule.jl")
 include("quadrature/rules/testrefinestrialqrule.jl")
 include("quadrature/rules/trialrefinestestqrule.jl")
 include("quadrature/rules/testinbaryrefoftrialqrule.jl")
+include("quadrature/tellesquadrature.jl")
+include("quadrature/tellesints.jl")
 
 include("postproc.jl")
 include("postproc/segcurrents.jl")

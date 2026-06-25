@@ -4,6 +4,7 @@
 - `materialize` keyword to assemble for bilinear forms allows for fine-grained control over the assembly of operators (e.g. dense representations vs H-matrix representations)
 - Restart for GMRES defaults to the maximum number of iterations
 - `assemble` of bilinear forms checks for recurring blocks and reuses them.
+- Support for visualisation through `PlotlyJS` through an extension
 
 # New in 2.9.0
 

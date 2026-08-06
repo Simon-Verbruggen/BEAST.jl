@@ -55,6 +55,7 @@ include("test_assemble_refinements.jl")
 include("test_dipole.jl")
 
 include("test_sauterschwabints1D.jl")
+include("test_telles.jl")
 include("test_hh2d_exec.jl")
 include("test_hh2d_ops.jl")
 include("test_hh2d_mie.jl")

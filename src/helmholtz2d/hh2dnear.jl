@@ -200,6 +200,29 @@ end
 function defaultquadstrat(op::BEAST.HH2DNear, X::BEAST.Space)
     return defaultquadstrat(op, X, X)
 end
-defaultquadstrat(op::HH2DNear, tfs, bfs) = SingleNumQStrat(3)
-quaddata(op::HH2DNear,rs,els,qs::SingleNumQStrat) = quadpoints(rs,els,(qs.quad_rule,))
-quadrule(op::HH2DNear,refspace,p,y,q,el,qdata,qs::SingleNumQStrat) = qdata[1,q]
+
+#defaultquadstrat(op::HH2DNear, tfs, bfs) = SingleNumQStrat(3)
+defaultquadstrat(op::HH2DNear, tfs, bfs) = SingleNumTellesQStrat(3, 3)
+quaddata(op::HH2DNear, rs, els, qs::SingleNumQStrat) = quadpoints(rs, els, (qs.quad_rule,))
+
+function quaddata(op::HH2DNear, rs, els, qs::SingleNumTellesQStrat)
+
+    T = coordtype(els[1])
+
+    leg = quadpoints(rs, els, (qs.gauss_rule,))
+
+    tel = _legendre(qs.telles_rule, -1.0, 1.0)
+
+    return (gauss=leg, telles=tel)
+end
+
+quadrule(op::HH2DNear, refspace, p, y, q, el, qdata, qs::SingleNumQStrat) = qdata[1, q]
+
+function quadrule(op::HH2DNear, refspace, p,
+    y, q, el, qd, qs::SingleNumTellesQStrat)
+    test_midpoint = cartesian(neighborhood(el, 0.5))
+    if ((norm(test_midpoint - y) / el.volume) <= 1)
+        return BEAST.TellesQuadrature.TellesRule1D(qd.telles)
+    end
+    return SingleNumQRule(qd.gauss[1, q])
+end

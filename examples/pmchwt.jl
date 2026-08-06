@@ -59,12 +59,25 @@ h = (n × H) × n
 @hilbertspace k l
 
 α, α′ = 1/η, 1/η′
-pmchwt = @discretise(
-    (η*T+η′*T′)[k,j] -      (K+K′)[k,m] +
-         (K+K′)[l,j] + (α*T+α′*T′)[l,m] == -e[k] - h[l],
-    j∈X, m∈X, k∈X, l∈X)
+# pmchwt = @discretise(
+#     (η*T+η′*T′)[k,j] -      (K+K′)[k,m] +
+#          (K+K′)[l,j] + (α*T+α′*T′)[l,m] == -e[k] - h[l],
+#     j∈X, m∈X, k∈X, l∈X)
 
-u = solve(pmchwt)
+a = (
+    η*T[k,j] + η′*T′[k,j] - K[k,m] - K′[k,m]
+    + K[l,j] + K′[l,j]    + α*T[l,m] + α′*T′[l,m])
+l = -e[k] - h[l]
+
+𝕏 = X × X
+A = assemble(a, 𝕏, 𝕏; threading=:cellcoloring)
+b = assemble(l, 𝕏)
+
+A⁻¹ = BEAST.GMRESSolver(A, reltol=1e-5, maxiter=1000)
+u = A⁻¹ * b
+
+# error()
+# u = solve(pmchwt)
 
 #preconditioner
 #=

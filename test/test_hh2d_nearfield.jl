@@ -267,7 +267,7 @@ end
     ρ_EDPSL = M_EDPSL \ (-gD0)
     ρ_EDPDL = M_EDPDL \ (-gD1)
 
-    ρ_ENPDL = M_ENPDL \ gN
+    ρ_ENPDL = pinv(M_ENPDL) * gN
     ρ_ENPSL = M_ENPSL \ (-gN)
 
     testcircle = meshcircle(1.2 * r, 1.2 * 0.6 * r)

@@ -7,16 +7,22 @@ struct MtE_OSRC_op <: Operator
     wavenumber::Float64
     Np::Int
     θ_p::Float64
-    curvature::Float64
+    ϵ::Float64
+    curvature::Union{Float64, Nothing}
     aj::Vector{ComplexF64}
     bj::Vector{ComplexF64}
     Aj::Vector{ComplexF64}
     Bj::Vector{ComplexF64}
 end
 
+# The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
+function OSRC_epsilon_standard(wavenumber, curvature)
+    return 0.39*wavenumber^(1/3)*curvature^(2/3)
+end
+
 # First a rotating branch-cut rational Padé approximation of the square root function ``\sqrt{1+z^2}`` is implemented.
 imag_conv = -im     # The paper uses mathematical time-harmonic convention ``e^{-i \omega t}`` -> swap to match BEAST time-harmonic convention ``e^{i \omega t}``.
-function MtE_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Float64)
+function MtE_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64; curvature=nothing, ϵ=nothing)
     # get the real and rotated pade coefficients
     aj = ComplexF64[]
     bj = ComplexF64[]
@@ -33,7 +39,14 @@ function MtE_OSRC_op(wavenumber::Float64, Np::Int, θ_p::Float64, curvature::Flo
         push!(Aj, A)
         push!(Bj, B)
     end
-    return MtE_OSRC_op(wavenumber, Np, θ_p, curvature, aj, bj, Aj, Bj)
+    # get epsilon parameter
+    if ϵ === nothing
+        if curvature === nothing
+            throw(ArgumentError("Either curvature or ϵ must be provided."))
+        end
+        ϵ = OSRC_epsilon_standard(wavenumber, curvature)
+    end
+    return MtE_OSRC_op(wavenumber, Np, θ_p, ϵ, curvature, aj, bj, Aj, Bj)
 end
 
 function scalartype(op::MtE_OSRC_op)
@@ -99,17 +112,11 @@ function SlicedLinearMap(A::LinearMap, rows::UnitRange{Int}, cols::UnitRange{Int
     return SlicedLinearMap(A, P, Q, rows, cols)
 end
 
-# The square root operator is regularized by adding a small imaginary component ``\epsilon`` to the wavenumber: ``k_{\epsilon} = k + i \epsilon``.
-function MtE_damping(op)
-    return 0.39*op.wavenumber^(1/3)*op.curvature^(2/3)
-end
-
 function assemble(op::MtE_OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
     R_0 = get_R0(op)
 
-    ϵ = MtE_damping(op)
     κ = op.wavenumber
-    κ_ϵ = κ + imag_conv*ϵ
+    κ_ϵ = κ + imag_conv*op.ϵ
 
     #create auxilary basis functions
     L0_int = BEAST.lagrangec0d1(X.geo)

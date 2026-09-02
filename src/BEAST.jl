@@ -244,6 +244,7 @@ include("interpolation.jl")
 include("operators/projectors.jl")
 include("operators/theta.jl")
 include("operators/OSRC.jl")
+include("operators/OSRC_rational.jl")
 
 include("quadrature/rules/momintegrals.jl")
 include("quadrature/doublenumints.jl")

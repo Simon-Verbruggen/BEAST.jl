@@ -30,7 +30,7 @@ using Makeitso
 using LinearAlgebra
 
 using Plots
-using PlotlyDocumenter
+#using PlotlyDocumenter
 
 # Now, assemble and solve the unpreconditioned EFIE
 
@@ -63,7 +63,7 @@ end
 # Next, assemble the OSRC MtE operator on the primal grid and use it to precondition the EFIE
 
 @target OSRC_MtE_op (geo,;κ, Np, curvature) -> begin
-    MtE_OSRC_operator = BEAST.MtE_OSRC_op(κ, Np, pi/2, curvature)
+    MtE_OSRC_operator = BEAST.MtE_OSRC_rational_op(κ, 1e-6; curvature=curvature)
     Nd = BEAST.nedelec(geo.Γ)
     MtE_map = assemble(MtE_OSRC_operator, Nd, Nd)
     return (;MtE=MtE_map)

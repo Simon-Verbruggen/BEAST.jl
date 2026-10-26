@@ -146,8 +146,8 @@ function assemble(op::MtE_OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat)
 
     sum_Π_inv_matrix = sum(op.Aj[j]/op.Bj[j] * create_j_phi_matrix17(j) for j in 1:op.Np)
     G_N_ϵ_inv = BEAST.lu(G - N_ϵ)
-
-    MtE_map = - (G_N_ϵ_inv * R_0 - G_N_ϵ_inv * G * sum_Π_inv_matrix)
+    
+    MtE_map = - G_N_ϵ_inv * (R_0 * LinearAlgebra.I - G * sum_Π_inv_matrix)     
     return MtE_map
 end
 
@@ -243,7 +243,7 @@ function  assemble(op::EtM_OSRC_op,X::Space,Y::Space; quadstrat=defaultquadstrat
     end
 
     A_inv = BEAST.lu(A)
-    EtM_map = A_inv * (op.r0*I + A * sum(op.rj[j]*get_M2(j) for j in 1:op.Np))*(A - N)
+    EtM_map = A_inv * (op.r0*LinearAlgebra.I + A * sum(op.rj[j]*get_M2(j) for j in 1:op.Np))*(A - N)
     return EtM_map
 end
 

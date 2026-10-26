@@ -38,12 +38,11 @@ function Base.:*(A::LUFactorization, b::AbstractVector)
 end
 
 function LinearAlgebra.mul!(y::AbstractVector, L::LUFactorization, b::AbstractVector)
-    fill!(y,false)
     if L.factorized == false
         L.F = LinearAlgebra.lu(L.A)
         L.factorized = true
     end
-    y[:] = L.F \ Vector(b)
+    y .= L.F \ Vector(b)
 end
 
 function solve(solver::LUFactorization, b)
